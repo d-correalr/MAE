@@ -7,7 +7,7 @@ library(corrplot)
 list.files()
 
 ######################Regresión######################################
-reg <- read.csv("https://github.com/d-correalr/MAE/Train real state.csv")
+reg <- read.csv("https://raw.githubusercontent.com/d-correalr/MAE/main/Train%20real%20state.csv")
 colnames(reg)
 dim(reg)
 head(reg)
@@ -30,7 +30,7 @@ boxplot(reg[, c("TimeToBusStop", "TimeToSubway")],
 
 ################Clasificación######################################
 list.files()
-clf <- read.csv("https://github.com/d-correalr/MAE/Train bank.csv")
+clf <- read.csv("https://raw.githubusercontent.com/d-correalr/MAE/main/Train%20bank.csv")
 
 colnames(clf)
 dim(clf)
