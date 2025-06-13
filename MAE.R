@@ -1,5 +1,3 @@
-#definimos directorio
-setwd("C:/Users/Asus/Desktop/MAE")
 #llamamos librerias
 library(dplyr)
 library(car)
@@ -9,7 +7,7 @@ library(corrplot)
 list.files()
 
 ######################Regresión######################################
-reg <- read.csv("C:/Users/Asus/Desktop/MAE/Train real state.csv")
+reg <- read.csv("https://github.com/d-correalr/MAE/Train real state.csv")
 colnames(reg)
 dim(reg)
 head(reg)
@@ -32,7 +30,7 @@ boxplot(reg[, c("TimeToBusStop", "TimeToSubway")],
 
 ################Clasificación######################################
 list.files()
-clf <- read.csv("C:/Users/Asus/Desktop/MAE/Train bank.csv")
+clf <- read.csv("https://github.com/d-correalr/MAE/Train bank.csv")
 
 colnames(clf)
 dim(clf)
