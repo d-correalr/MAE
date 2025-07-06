@@ -333,6 +333,39 @@ submit <- data.frame(
 # Guardamos CSV correctamente
 write.csv(submit, "submission_interacciones4.csv", row.names = FALSE)
 
+## modelo con solo dos interacciones, tamaño piso y manejo de apartamento
+
+# Crear interacciones en training
+reg_matrix_df$SizeFloor <- reg_matrix_df$`Size.sqf.` * reg_matrix_df$Floor
+reg_matrix_df$AptManageFac <- reg_matrix_df$AptManageTypeself_management * reg_matrix_df$N_FacilitiesInApt
+
+# Modelo optimizado
+modelo_optimo <- lm(SalePrice ~ Size.sqf. + Floor + YearBuilt + N_elevators +
+                      N_FacilitiesInApt +
+                      HallwayTypeterraced + HeatingTypeindividual_heating +
+                      AptManageTypeself_management +
+                      SizeFloor + AptManageFac,
+                    data = reg_matrix_df)
+
+summary(modelo_optimo)
+
+##preparamos para exportar
+
+test_matrix_df$SizeFloor <- test_matrix_df$`Size.sqf.` * test_matrix_df$Floor
+test_matrix_df$AptManageFac <- test_matrix_df$AptManageTypeself_management * test_matrix_df$N_FacilitiesInApt
+
+## realizamos predicciones para probar
+
+pred_optimo <- predict(modelo_optimo, newdata = test_matrix_df)
+
+submit <- data.frame(
+  Id = test_ids,
+  Predicted = round(pred_optimo)
+)
+
+write.csv(submit, "submission_dosinterac.csv", row.names = FALSE)
+
+
 
 ################Clasificación######################################
 list.files()
