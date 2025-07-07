@@ -365,6 +365,182 @@ submit <- data.frame(
 
 write.csv(submit, "submission_dosinterac.csv", row.names = FALSE)
 
+### Modelo Sep con cooks
+
+modelo_step <- step(modelo_optimo, direction = "both", trace = 0)
+summary(modelo_step)
+
+plot(modelo_optimo, which = 4)  # Cook's Distance
+
+influencia <- cooks.distance(modelo_optimo)
+reg_clean <- reg_matrix_df[influencia < 0.5, ]
+modelo_limpio <- update(modelo_optimo, data = reg_clean)
+summary(modelo_limpio)
+
+# Calcular distancia de Cook
+influencia <- cooks.distance(modelo_optimo)
+
+# Visualizar (opcional)
+plot(influencia, type = "h", main = "Distancia de Cook", ylab = "Cook's D")
+abline(h = 0.5, col = "red", lty = 2)
+
+# Eliminar observaciones con Cook's D > 0.5
+reg_filtrado <- reg_matrix_df[influencia < 0.5, ]
+
+modelo_filtrado <- lm(SalePrice ~ Size.sqf. + Floor + YearBuilt + N_elevators +
+                        N_FacilitiesInApt +
+                        HallwayTypeterraced + HeatingTypeindividual_heating +
+                        AptManageTypeself_management +
+                        SizeFloor + AptManageFac,
+                      data = reg_filtrado)
+
+summary(modelo_filtrado)
+
+# Asegúrate de que test_matrix_df tenga las variables de interacción ya creadas
+
+pred_filtrado <- predict(modelo_filtrado, newdata = test_matrix_df)
+
+submit <- data.frame(
+  Id = test_ids,
+  Predicted = round(pred_filtrado)
+)
+
+write.csv(submit, "submission_filtrado.csv", row.names = FALSE)
+
+
+#### modelo entregado
+library(dplyr)
+library(Metrics)
+
+# Copias limpias
+train <- reg_matrix_df
+test <- test_matrix_df
+
+# Aplicar todas las transformaciones
+train <- train %>%
+  mutate(
+    SizeFloor = `Size.sqf.` * Floor,
+    AptManageFac = AptManageTypeself_management * N_FacilitiesInApt,
+    SizeElev = `Size.sqf.` * N_elevators,
+    FloorElev = Floor * N_elevators,
+    Size2 = `Size.sqf.`^2,
+    Floor_sqrt = sqrt(Floor),
+    Age = max(YearBuilt) - YearBuilt,
+    FacilitiesLevel = cut(N_FacilitiesInApt, breaks = c(-Inf, 4, 8, Inf), labels = c("bajo", "medio", "alto")),
+    HighFloor = ifelse(Floor >= 15, 1, 0),
+    SizeFloorYear = `Size.sqf.` * Floor * YearBuilt,
+    ElevatorDummy = ifelse(N_elevators > 0, 1, 0),
+    HeatSize = HeatingTypeindividual_heating * `Size.sqf.`
+  )
+
+test <- test %>%
+  mutate(
+    SizeFloor = `Size.sqf.` * Floor,
+    AptManageFac = AptManageTypeself_management * N_FacilitiesInApt,
+    SizeElev = `Size.sqf.` * N_elevators,
+    FloorElev = Floor * N_elevators,
+    Size2 = `Size.sqf.`^2,
+    Floor_sqrt = sqrt(Floor),
+    Age = max(train$YearBuilt) - YearBuilt,
+    FacilitiesLevel = cut(N_FacilitiesInApt, breaks = c(-Inf, 4, 8, Inf), labels = c("bajo", "medio", "alto")),
+    HighFloor = ifelse(Floor >= 15, 1, 0),
+    SizeFloorYear = `Size.sqf.` * Floor * YearBuilt,
+    ElevatorDummy = ifelse(N_elevators > 0, 1, 0),
+    HeatSize = HeatingTypeindividual_heating * `Size.sqf.`
+  )
+
+# Lista de fórmulas
+formulas <- list(
+  SalePrice ~ Size.sqf. + Floor + YearBuilt + N_elevators + N_FacilitiesInApt +
+    HallwayTypeterraced + HeatingTypeindividual_heating + AptManageTypeself_management +
+    SizeFloor + AptManageFac + SizeElev,
+  
+  . ~ . + FloorElev,
+  . ~ . + Size2,
+  . ~ . - Floor + Floor_sqrt,
+  . ~ . - YearBuilt + Age,
+  SalePrice ~ Size.sqf. + Floor + YearBuilt + N_elevators +
+    FacilitiesLevel + HallwayTypeterraced + HeatingTypeindividual_heating +
+    AptManageTypeself_management + SizeFloor + AptManageFac,
+  
+  . ~ . + HighFloor,
+  . ~ . + SizeFloorYear,
+  . ~ . + ElevatorDummy,
+  . ~ . + HeatSize
+)
+
+# Ajustar modelos, calcular métricas y exportar predicciones
+results <- data.frame(Model = character(), R2 = numeric(), MAE = numeric(), MSE = numeric(), stringsAsFactors = FALSE)
+
+for (i in 1:10) {
+  f <- if (i == 1 || i == 6) formulas[[i]] else update(formulas[[1]], formulas[[i]])
+  
+  modelo <- lm(f, data = train)
+  pred_train <- predict(modelo, newdata = train)
+  mae_val <- mae(train$SalePrice, pred_train)
+  mse_val <- mse(train$SalePrice, pred_train)
+  r2_val <- summary(modelo)$adj.r.squared
+  
+  # Predicción en test
+  pred_test <- predict(modelo, newdata = test)
+  pred_df <- data.frame(Id = test_ids, Predicted = round(pred_test))
+  write.csv(pred_df, sprintf("submission_model%d.csv", i), row.names = FALSE)
+  
+  # Guardar métricas
+  results[i, ] <- c(paste0("Modelo ", i), round(r2_val, 4), round(mae_val, 2), round(mse_val, 2))
+}
+
+# Mostrar resumen
+print(results)
+
+###################### este es
+# Modelo 8: Interacción triple entre Size.sqf., Floor y YearBuilt
+modelo_8 <- lm(
+  formula = SalePrice ~ Size.sqf. * Floor * YearBuilt +
+    N_elevators +
+    N_Parkinglot.Basement. +
+    N_FacilitiesInApt +
+    HallwayTypeterraced +
+    HeatingTypeindividual_heating +
+    AptManageTypeself_management +
+    TimeToSubway_groupmedia,
+  data = reg_matrix_df
+)
+
+# Resumen del modelo
+summary(modelo_8)
+
+#linealidad y homocedasticidad
+# Gráfico de residuos vs valores ajustados
+plot(modelo_8$fitted.values, modelo_8$residuals,
+     xlab = "Valores ajustados",
+     ylab = "Residuos",
+     main = "Residuos vs Ajustados")
+abline(h = 0, col = "red")
+
+## normalidad de los errores
+# Q-Q Plot
+qqnorm(modelo_8$residuals)
+qqline(modelo_8$residuals, col = "red")
+
+# Prueba de Shapiro-Wilk
+shapiro.test(modelo_8$residuals)
+
+#multicolinealidad
+library(car)
+vif(modelo_8)
+
+# independencia de los errores
+library(lmtest)
+dwtest(modelo_8)
+
+#calculo intervalo de confianza
+confint(modelo_8, level = 0.95)
+
+IC_modelo8 <- confint(modelo_8, level = 0.95)
+write.csv(IC_modelo8, "intervalos_confianza_modelo8.csv", row.names = TRUE)
+
+IC_modelo8[IC_modelo8[, 1] * IC_modelo8[, 2] > 0, ]
 
 
 ################Clasificación######################################
