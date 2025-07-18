@@ -923,7 +923,7 @@ evaluar_umbral <- function(prob, y_true, threshold) {
              AUC = round(as.numeric(auc), 4),
              Accuracy = round(accuracy, 4),
              F1 = round(f1, 4),
-             Sensibilidad = round(recall, 4),
+             Sensibilidad = round(diasrecall, 4),
              Especificidad = round(specificity, 4))
 }
 
@@ -946,11 +946,124 @@ write.table(envio_7b_umbral, file = "submission_model7b_umbral.csv", sep = ",",
 
 
 
+set.seed(123)
+
+library(MASS)
+library(pROC)
+
+# Crear pliegues estratificados
+k <- 10
+folds <- cut(seq(1, nrow(train)), breaks = k, labels = FALSE)
+folds <- sample(folds)  # aleatorizar
+
+# Guardar resultados por fold
+metricas_cv <- data.frame()
+
+for (i in 1:k) {
+  cat("Fold", i, "\n")
+  
+  idx_valid <- which(folds == i)
+  train_fold <- train[-idx_valid, ]
+  valid_fold <- train[idx_valid, ]
+  
+  # Entrenar LDA
+  modelo_fold <- lda(Subscription ~ Age + Contact + Last.Contact.Duration + Poutcome +
+                       Education + Campaign + Previous,
+                     data = train_fold)
+  
+  # Predecir en validación
+  prob_valid <- predict(modelo_fold, newdata = valid_fold)$posterior[,2]
+  pred_valid <- ifelse(prob_valid > 0.30, 1, 0)
+  y_true <- as.numeric(as.character(valid_fold$Subscription))
+  
+  # Calcular métricas
+  TP <- sum(y_true == 1 & pred_valid == 1)
+  TN <- sum(y_true == 0 & pred_valid == 0)
+  FP <- sum(y_true == 0 & pred_valid == 1)
+  FN <- sum(y_true == 1 & pred_valid == 0)
+  
+  accuracy <- (TP + TN) / length(y_true)
+  precision <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  recall <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  f1 <- ifelse((precision + recall) == 0, 0, 2 * precision * recall / (precision + recall))
+  specificity <- ifelse((TN + FP) == 0, 0, TN / (TN + FP))
+  auc <- roc(y_true, prob_valid)$auc
+  
+  metricas_cv <- rbind(metricas_cv, data.frame(Fold = i,
+                                               AUC = round(auc, 4),
+                                               Accuracy = round(accuracy, 4),
+                                               F1 = round(f1, 4),
+                                               Sensibilidad = round(recall, 4),
+                                               Especificidad = round(specificity, 4)))
+}
+
+# Resultado final
+cat("\n==== Promedios de Validación Cruzada ====\n")
+print(round(colMeans(metricas_cv[,-1]), 4))
 
 
 
+# ==== Generar Submission final con umbral 0.30 ====
+
+# Predicción probabilística con modelo final
+prob_7b <- predict(modelo_7b, newdata = test_final, type = "response")
+
+# Aplicar umbral 0.30
+pred_binarias_7b <- ifelse(prob_7b >= 0.30, 1, 0)
+
+# Crear dataframe para envío
+submission <- data.frame(
+  Id = test$ID,
+  Predicted = pred_binarias_7b
+)
+
+# Guardar CSV
+write.table(
+  submission,
+  file = "submission_7b_umbral_030.csv",
+  sep = ",",
+  row.names = FALSE,
+  col.names = TRUE,
+  quote = FALSE
+)
 
 
+# ================================
+# Modelo 7b: Regresión logística con interacciones
+# ================================
+modelo_7b <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status + 
+    Credit + Housing.Loan + Personal.Loan + Contact + 
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration + 
+    Campaign + Pdays + Previous + Poutcome +
+    Education:Contact + Job:Poutcome + Age:Last.Contact.Duration + 
+    Credit:Personal.Loan + Education:Campaign,
+  data = train,
+  family = "binomial"
+)
+
+# Asegurarse de que test tenga solo las variables requeridas
+vars_7b <- all.vars(formula(modelo_7b))
+vars_7b <- setdiff(vars_7b, "Subscription")
+test_final <- test[, vars_7b, drop = FALSE]
+
+# ==== Predicción y Submission ====
+prob_7b <- predict(modelo_7b, newdata = test_final, type = "response")
+pred_binarias_7b <- ifelse(prob_7b >= 0.30, 1, 0)
+
+submission <- data.frame(
+  Id = test$ID,
+  Predicted = pred_binarias_7b
+)
+
+write.table(
+  submission,
+  file = "submission_7b_umbral_030.csv",
+  sep = ",",
+  row.names = FALSE,
+  col.names = TRUE,
+  quote = FALSE
+)
 
 
 
