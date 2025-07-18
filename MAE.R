@@ -6,6 +6,14 @@ library(psych)
 library(corrplot)
 library(ggplot2)
 list.files()
+library(tidyverse)
+library(caret)
+library(MASS)
+library(pROC)
+library(car)
+library(glmnet)
+library(MuMIn)
+
 
 ######################Regresión######################################
 reg <- read.csv("https://raw.githubusercontent.com/d-correalr/MAE/main/Train%20real%20state.csv")
@@ -545,24 +553,406 @@ IC_modelo8[IC_modelo8[, 1] * IC_modelo8[, 2] > 0, ]
 
 ################Clasificación######################################
 list.files()
-clf <- read.csv("https://raw.githubusercontent.com/d-correalr/MAE/main/Train%20bank.csv")
+train <- read.csv("https://raw.githubusercontent.com/d-correalr/MAE/main/Train%20bank.csv")
+test <- read.csv("https://raw.githubusercontent.com/d-correalr/MAE/main/Test%20bank.csv")
 
-colnames(clf)
-dim(clf)
-colnames(clf)
-head(clf)
-str(clf)
-describe(clf)
+colnames(train)
+dim(train)
+colnames(train)
+head(train)
+str(train)
+describe(train)
 
-table(clf$Subscription)
-barplot(table(clf$Subscription),
+table(train$Subscription)
+barplot(table(train$Subscription),
         main = "Distribución de la variable Subscription",
         names.arg = c("No", "Sí"),
         col = c("tomato", "skyblue"),
         ylab = "Frecuencia")
 
-boxplot(clf[, c("Age")],
+boxplot(train[, c("Age")],
         main = "Caracteristicas personas",
         col = "grey",
         las = 2,
         notch = TRUE)
+## preparación
+
+target <- "Subscription"
+
+# Preparación
+train$Subscription <- as.factor(train$Subscription)
+train$ID <- train$X
+test$ID <- test$X
+
+train <- train %>% select(-X)
+train$X <- NULL
+test$X <- NULL
+test <- test %>% select(-X)
+
+
+####################
+
+# Modelo 1: Regresión logística con todas las variables
+modelo1 <- glm(Subscription ~ ., data = train, family = "binomial")
+pred1 <- predict(modelo1, newdata = test, type = "response")
+envio1 <- data.frame(Id = test$ID, Predicted = round(pred1, 0))
+write.table(envio1, file = "submission_model1_logistic.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 2: GLM con solo variables numéricas
+modelo2 <- glm(Subscription ~ Age + Balance..euros. + Last.Contact.Day +
+                 Last.Contact.Duration + Campaign + Pdays + Previous,
+               data = train, family = "binomial")
+pred2 <- predict(modelo2, newdata = test, type = "response")
+envio2 <- data.frame(Id = test$ID, Predicted = round(pred2, 0))
+write.table(envio2, file = "submission_model2_numeric.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 3: GLM con solo variables categóricas
+modelo3 <- glm(Subscription ~ Job + Marital.Status + Education + Credit +
+                 Housing.Loan + Personal.Loan + Contact + Last.Contact.Month + Poutcome,
+               data = train, family = "binomial")
+pred3 <- predict(modelo3, newdata = test, type = "response")
+envio3 <- data.frame(Id = test$ID, Predicted = round(pred3, 0))
+write.table(envio3, file = "submission_model3_categoricas.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 4: GLM con 3 variables más importantes (ejemplo)
+modelo4 <- glm(Subscription ~ Contact + Poutcome + Last.Contact.Duration,
+               data = train, family = "binomial")
+pred4 <- predict(modelo4, newdata = test, type = "response")
+envio4 <- data.frame(Id = test$ID, Predicted = round(pred4, 0))
+write.table(envio4, file = "submission_model4_top3.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 5: GLM con variables manualmente elegidas
+modelo5 <- glm(Subscription ~ Age + Education + Contact + Campaign + Poutcome,
+               data = train, family = "binomial")
+pred5 <- predict(modelo5, newdata = test, type = "response")
+envio5 <- data.frame(Id = test$ID, Predicted = round(pred5, 0))
+write.table(envio5, file = "submission_model5_mixto.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 6: LDA con todas las variables
+library(MASS)
+modelo6 <- lda(Subscription ~ ., data = train)
+pred6 <- predict(modelo6, newdata = test)$posterior[,2]
+envio6 <- data.frame(Id = test$ID, Predicted = round(pred6, 0))
+write.table(envio6, file = "submission_model6_lda.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 7: LDA con variables seleccionadas
+modelo7 <- lda(Subscription ~ Age + Contact + Last.Contact.Duration + Poutcome,
+               data = train)
+pred7 <- predict(modelo7, newdata = test)$posterior[,2]
+envio7 <- data.frame(Id = test$ID, Predicted = round(pred7, 0))
+write.table(envio7, file = "submission_model7_lda_selec.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 8: Regresión logística con Contact + Pdays + Job
+modelo8 <- glm(Subscription ~ Contact + Pdays + Job, data = train, family = "binomial")
+pred8 <- predict(modelo8, newdata = test, type = "response")
+envio8 <- data.frame(Id = test$ID, Predicted = round(pred8, 0))
+write.table(envio8, file = "submission_model8_simple.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 9: GLM con variables de marketing (Campaign, Contact, Previous, Poutcome)
+modelo9 <- glm(Subscription ~ Campaign + Contact + Previous + Poutcome,
+               data = train, family = "binomial")
+pred9 <- predict(modelo9, newdata = test, type = "response")
+envio9 <- data.frame(Id = test$ID, Predicted = round(pred9, 0))
+write.table(envio9, file = "submission_model9_marketing.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+####################
+
+# Modelo 10: LDA con solo Contact y Poutcome
+modelo10 <- lda(Subscription ~ Contact + Poutcome, data = train)
+pred10 <- predict(modelo10, newdata = test)$posterior[,2]
+envio10 <- data.frame(Id = test$ID, Predicted = round(pred10, 0))
+write.table(envio10, file = "submission_model10_lda_contact.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+############ probamos modelos con base en el 7
+#7b
+modelo7b <- lda(Subscription ~ Age + Contact + Last.Contact.Duration + Poutcome + Education + Campaign + Previous, data = train)
+pred7b <- predict(modelo7b, newdata = test)$posterior[,2]
+envio7b <- data.frame(Id = test$ID, Predicted = round(pred7b, 0))
+write.table(envio7b, file = "submission_model7b_lda_plus_vars.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+#7c
+
+train$LogDuration <- log1p(train$Last.Contact.Duration)
+test$LogDuration <- log1p(test$Last.Contact.Duration)
+
+modelo7c <- lda(Subscription ~ Age + Contact + LogDuration + Poutcome, data = train)
+pred7c <- predict(modelo7c, newdata = test)$posterior[,2]
+envio7c <- data.frame(Id = test$ID, Predicted = round(pred7c, 0))
+write.table(envio7c, file = "submission_model7c_lda_log.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+#7d
+
+# Verificar distribución
+table(train$Job)
+
+# Reemplazar trabajos con baja frecuencia
+rare_jobs <- names(which(table(train$Job) < 300))
+train$JobClean <- ifelse(train$Job %in% rare_jobs, "other", train$Job)
+test$JobClean <- ifelse(test$Job %in% rare_jobs, "other", test$Job)
+
+train$JobClean <- as.factor(train$JobClean)
+test$JobClean <- as.factor(test$JobClean)
+
+modelo7d <- lda(Subscription ~ Age + Contact + Last.Contact.Duration + Poutcome + JobClean, data = train)
+pred7d <- predict(modelo7d, newdata = test)$posterior[,2]
+envio7d <- data.frame(Id = test$ID, Predicted = round(pred7d, 0))
+write.table(envio7d, file = "submission_model7d_lda_jobclean.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+#7e
+
+library(MASS)
+common_vars <- c("Age", "Contact", "Last.Contact.Duration", "Poutcome", "Education", "Campaign", "Previous")
+formula_step <- as.formula(paste("Subscription ~", paste(common_vars, collapse = "+")))
+modelo7e <- step(glm(formula_step, data = train, family = "binomial"), trace = FALSE)
+pred7e <- predict(modelo7e, newdata = test, type = "response")
+envio7e <- data.frame(Id = test$ID, Predicted = round(pred7e, 0))
+write.table(envio7e, file = "submission_model7e_log_step.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+library(dplyr)
+
+# Aseguramos factor para target
+train$Subscription <- as.factor(train$Subscription)
+
+cat("\n========================\nNUMÉRICAS\n========================\n")
+
+# 1. Estadísticas de variables numéricas por clase
+numericas <- c("Age", "Balance..euros.", "Last.Contact.Day", "Last.Contact.Duration", "Campaign", "Pdays", "Previous")
+
+for (var in numericas) {
+  cat("\n---", var, "---\n")
+  print(
+    train %>%
+      group_by(Subscription) %>%
+      summarise(
+        Mean = mean(.data[[var]], na.rm = TRUE),
+        Median = median(.data[[var]], na.rm = TRUE),
+        SD = sd(.data[[var]], na.rm = TRUE),
+        Q1 = quantile(.data[[var]], 0.25, na.rm = TRUE),
+        Q3 = quantile(.data[[var]], 0.75, na.rm = TRUE),
+        .groups = "drop"
+      )
+  )
+}
+
+cat("\n========================\nCATEGÓRICAS\n========================\n")
+
+# 2. Proporción de clase 1 por nivel de variables categóricas
+categoricas <- c("Job", "Marital.Status", "Education", "Credit", "Housing.Loan", "Personal.Loan", "Contact", "Last.Contact.Month", "Poutcome")
+
+for (var in categoricas) {
+  cat("\n---", var, "---\n")
+  print(
+    train %>%
+      group_by(.data[[var]]) %>%
+      summarise(
+        n = n(),
+        suscripciones = sum(Subscription == 1),
+        total = n(),
+        proporción = round(mean(Subscription == 1), 3),
+        .groups = "drop"
+      ) %>%
+      arrange(desc(proporción))
+  )
+}
+
+############## 7C revamp
+
+library(MASS)
+
+# Transformaciones
+train$LogDuration <- log1p(train$Last.Contact.Duration)
+test$LogDuration <- log1p(test$Last.Contact.Duration)
+
+train$LogBalance <- log1p(train$Balance..euros. + abs(min(train$Balance..euros.)) + 1)
+test$LogBalance <- log1p(test$Balance..euros. + abs(min(train$Balance..euros.)) + 1)
+
+train$LowCampaign <- ifelse(train$Campaign <= 2, 1, 0)
+test$LowCampaign <- ifelse(test$Campaign <= 2, 1, 0)
+
+# Dummies de variables categóricas importantes
+train$SuccessContact <- ifelse(train$Poutcome == "success", 1, 0)
+test$SuccessContact <- ifelse(test$Poutcome == "success", 1, 0)
+
+train$Cellular <- ifelse(train$Contact == "cellular", 1, 0)
+test$Cellular <- ifelse(test$Contact == "cellular", 1, 0)
+
+train$Month_HighConv <- ifelse(train$Last.Contact.Month %in% c("mar", "sep", "dec"), 1, 0)
+test$Month_HighConv <- ifelse(test$Last.Contact.Month %in% c("mar", "sep", "dec"), 1, 0)
+
+train$IsStudent <- ifelse(train$Job == "student", 1, 0)
+test$IsStudent <- ifelse(test$Job == "student", 1, 0)
+
+# Modelo LDA refinado
+modelo7c <- lda(Subscription ~ LogDuration + LogBalance + LowCampaign + SuccessContact + 
+                  Cellular + Month_HighConv + IsStudent, data = train)
+
+# Predicción
+pred7c <- predict(modelo7c, newdata = test)$posterior[,2]
+envio7c <- data.frame(Id = test$ID, Predicted = round(pred7c, 0))
+
+# Exportar
+write.table(envio7c, file = "submission_model7c_lda_refinado.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+########### comparamos modelos
+
+library(MASS)
+library(pROC)
+
+# Modelo 7b
+modelo7b <- lda(Subscription ~ Age + Contact + Last.Contact.Duration + Poutcome + Education + Campaign + Previous,
+                data = train)
+prob7b <- predict(modelo7b)$posterior[,2]
+pred7b <- ifelse(prob7b > 0.5, 1, 0)
+
+# Modelo 7c
+modelo7c <- lda(Subscription ~ LogDuration + LogBalance + LowCampaign + SuccessContact +
+                  Cellular + Month_HighConv + IsStudent,
+                data = train)
+prob7c <- predict(modelo7c)$posterior[,2]
+pred7c <- ifelse(prob7c > 0.5, 1, 0)
+
+# Función de evaluación sin caret
+evaluar <- function(y_true, prob, pred, nombre) {
+  auc <- roc(y_true, prob)$auc
+  
+  TP <- sum(y_true == 1 & pred == 1)
+  TN <- sum(y_true == 0 & pred == 0)
+  FP <- sum(y_true == 0 & pred == 1)
+  FN <- sum(y_true == 1 & pred == 0)
+  
+  accuracy <- (TP + TN) / length(y_true)
+  precision <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  recall <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  f1 <- ifelse((precision + recall) == 0, 0, 2 * precision * recall / (precision + recall))
+  specificity <- ifelse((TN + FP) == 0, 0, TN / (TN + FP))
+  
+  data.frame(Modelo = nombre,
+             AUC = round(auc, 4),
+             Accuracy = round(accuracy, 4),
+             F1 = round(f1, 4),
+             Sensibilidad = round(recall, 4),
+             Especificidad = round(specificity, 4))
+}
+
+y_true <- as.numeric(as.character(train$Subscription))
+
+res7b <- evaluar(y_true, prob7b, pred7b, "Modelo 7b")
+res7c <- evaluar(y_true, prob7c, pred7c, "Modelo 7c Mejorado")
+
+resultados <- rbind(res7b, res7c)
+print(resultados)
+
+
+###7d
+library(MASS)
+
+# ========================
+# Variables transformadas
+# ========================
+train$LogDuration <- log1p(train$Last.Contact.Duration)
+test$LogDuration <- log1p(test$Last.Contact.Duration)
+
+# Dummy: ¿hubo éxito en contacto anterior?
+train$SuccessContact <- ifelse(train$Poutcome == "success", 1, 0)
+test$SuccessContact <- ifelse(test$Poutcome == "success", 1, 0)
+
+# Dummy: ¿contactado por celular?
+train$Cellular <- ifelse(train$Contact == "cellular", 1, 0)
+test$Cellular <- ifelse(test$Contact == "cellular", 1, 0)
+
+# ========================
+# Modelo 7d
+# ========================
+modelo7d <- lda(Subscription ~ Age + Contact + LogDuration + Poutcome + Education +
+                  Campaign + Previous + SuccessContact + Cellular,
+                data = train)
+
+# ========================
+# Predicción
+# ========================
+prob7d <- predict(modelo7d, newdata = test)$posterior[,2]
+envio7d <- data.frame(Id = test$ID, Predicted = round(prob7d, 0))
+write.table(envio7d, file = "submission_model7d_lda_combinado.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+# En entrenamiento
+prob7d_train <- predict(modelo7d, newdata = train)$posterior[,2]
+pred7d_train <- ifelse(prob7d_train > 0.5, 1, 0)
+res7d <- evaluar(y_true, prob7d_train, pred7d_train, "Modelo 7d Combinado")
+
+# Comparar con anteriores
+resultados <- rbind(res7b, res7c, res7d)
+print(resultados)
+
+###### 7b sigue siendo el mejor
+
+library(pROC)
+
+# Ya deberías tener esto cargado:
+# modelo7b, prob7b, train$Subscription como factor
+
+# Vector real
+y_true <- as.numeric(as.character(train$Subscription))
+
+# Función de evaluación
+evaluar_umbral <- function(prob, y_true, threshold) {
+  pred <- ifelse(prob > threshold, 1, 0)
+  
+  TP <- sum(y_true == 1 & pred == 1)
+  TN <- sum(y_true == 0 & pred == 0)
+  FP <- sum(y_true == 0 & pred == 1)
+  FN <- sum(y_true == 1 & pred == 0)
+  
+  accuracy <- (TP + TN) / length(y_true)
+  precision <- ifelse((TP + FP) == 0, 0, TP / (TP + FP))
+  recall <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+  f1 <- ifelse((precision + recall) == 0, 0, 2 * precision * recall / (precision + recall))
+  specificity <- ifelse((TN + FP) == 0, 0, TN / (TN + FP))
+  auc <- roc(y_true, prob)$auc
+  
+  data.frame(Umbral = threshold,
+             AUC = round(as.numeric(auc), 4),
+             Accuracy = round(accuracy, 4),
+             F1 = round(f1, 4),
+             Sensibilidad = round(recall, 4),
+             Especificidad = round(specificity, 4))
+}
+
+# Evaluar múltiples umbrales
+umbrales <- seq(0.5, 0.3, by = -0.05)
+
+resultados_umbral <- do.call(rbind, lapply(umbrales, function(u) evaluar_umbral(prob7b, y_true, u)))
+print(resultados_umbral)
+
+###ajustamos umbrales
+
+# Predicción en test
+prob_test_7b <- predict(modelo7b, newdata = test)$posterior[,2]
+pred_test_7b <- ifelse(prob_test_7b > 0.30, 1, 0)
+
+# Generar archivo de envío
+envio_7b_umbral <- data.frame(Id = test$ID, Predicted = pred_test_7b)
+write.table(envio_7b_umbral, file = "submission_model7b_umbral.csv", sep = ",",
+            row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
