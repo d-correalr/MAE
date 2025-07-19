@@ -584,10 +584,9 @@ train$Subscription <- as.factor(train$Subscription)
 train$ID <- train$X
 test$ID <- test$X
 
-train <- train %>% select(-X)
 train$X <- NULL
 test$X <- NULL
-test <- test %>% select(-X)
+
 
 
 ####################
@@ -1066,6 +1065,127 @@ write.table(
 )
 
 
+###################va ganando
+# ================================
+# Modelo 7e: GLM Mejorado con nuevas variables e interacciones
+# ================================
+
+# ---- Crear variables derivadas en train ----
+train$EdadGrupo <- cut(train$Age, breaks = c(0, 30, 40, 50, 60, 100), labels = FALSE, include.lowest = TRUE)
+train$ContactadoAntes <- ifelse(train$Pdays == -1, 0, 1)
+train$DuracionCampaña <- train$Last.Contact.Duration / (train$Campaign + 1)
+
+# ---- Asegurar que estén en test también ----
+test$EdadGrupo <- cut(test$Age, breaks = c(0, 30, 40, 50, 60, 100), labels = FALSE, include.lowest = TRUE)
+test$ContactadoAntes <- ifelse(test$Pdays == -1, 0, 1)
+test$DuracionCampaña <- test$Last.Contact.Duration / (test$Campaign + 1)
+
+# ---- Entrenar el modelo ----
+modelo_7e <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Credit + Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    EdadGrupo + ContactadoAntes + DuracionCampaña +
+    Education:Job + Poutcome:Campaign + Last.Contact.Month:Contact,
+  data = train,
+  family = "binomial"
+)
+
+# ---- Predicción ----
+vars_7e <- all.vars(formula(modelo_7e))
+vars_7e <- setdiff(vars_7e, "Subscription")
+test_final <- test[, vars_7e, drop = FALSE]
+
+prob_7e <- predict(modelo_7e, newdata = test_final, type = "response")
+pred_binarias_7e <- ifelse(prob_7e >= 0.25, 1, 0)
+
+# ---- Submission ----
+submission <- data.frame(
+  Id = test$ID,
+  Predicted = pred_binarias_7e
+)
+
+write.table(
+  submission,
+  file = "submission_7e_umbral_025.csv",
+  sep = ",",
+  row.names = FALSE,
+  col.names = TRUE,
+  quote = FALSE
+)
+
+num_cols <- sapply(train, is.numeric)
+colSums(!is.finite(train[, num_cols]))
 
 
+############################################# 
+# ================================
+# Modelo 7f: GLM con limpieza, transformaciones e interacciones
+# ================================
+
+# ---- Limpiar y transformar Balance ----
+train$Balance.Limpio <- ifelse(is.na(train$Balance..euros.) | train$Balance..euros. < -1, 0, train$Balance..euros.)
+test$Balance.Limpio  <- ifelse(is.na(test$Balance..euros.)  | test$Balance..euros. < -1, 0, test$Balance..euros.)
+
+train$LogBalance <- log1p(train$Balance.Limpio)
+test$LogBalance  <- log1p(test$Balance.Limpio)
+
+# ---- Otras variables derivadas ----
+train$EdadGrupo <- cut(train$Age, breaks = c(0, 30, 40, 50, 60, 100), labels = FALSE, include.lowest = TRUE)
+test$EdadGrupo  <- cut(test$Age, breaks = c(0, 30, 40, 50, 60, 100), labels = FALSE, include.lowest = TRUE)
+
+train$ContactadoAntes <- ifelse(train$Pdays == -1, 0, 1)
+test$ContactadoAntes  <- ifelse(test$Pdays == -1, 0, 1)
+
+train$DuracionCampaña <- train$Last.Contact.Duration / (train$Campaign + 1)
+test$DuracionCampaña  <- test$Last.Contact.Duration / (test$Campaign + 1)
+
+train$DuracionBin <- cut(train$Last.Contact.Duration, breaks = c(0, 100, 300, 600, 1000, Inf), labels = FALSE)
+test$DuracionBin  <- cut(test$Last.Contact.Duration, breaks = c(0, 100, 300, 600, 1000, Inf), labels = FALSE)
+
+# ---- Agrupamiento de profesiones poco frecuentes ----
+rare_jobs <- names(which(table(train$Job) < 300))
+train$JobSimplified <- ifelse(train$Job %in% rare_jobs, "other", train$Job)
+test$JobSimplified  <- ifelse(test$Job %in% rare_jobs, "other", test$Job)
+train$JobSimplified <- factor(train$JobSimplified)
+test$JobSimplified  <- factor(test$JobSimplified)
+
+# ---- Eliminar filas con NA restantes en train ----
+train <- na.omit(train)
+
+# ---- Entrenar modelo ----
+modelo_7f <- glm(
+  Subscription ~ Age + Education + JobSimplified + Marital.Status +
+    Credit + Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    LogBalance + EdadGrupo + ContactadoAntes + DuracionCampaña + DuracionBin +
+    Campaign:Previous + DuracionCampaña:Campaign + ContactadoAntes:Pdays,
+  data = train,
+  family = "binomial"
+)
+
+# ---- Predicción ----
+vars_7f <- all.vars(formula(modelo_7f))
+vars_7f <- setdiff(vars_7f, "Subscription")
+test_final <- test[, vars_7f, drop = FALSE]
+
+prob_7f <- predict(modelo_7f, newdata = test_final, type = "response")
+pred_binarias_7f <- ifelse(prob_7f >= 0.22, 1, 0)
+
+# ---- Submission ----
+submission <- data.frame(
+  Id = test$ID,
+  Predicted = pred_binarias_7f
+)
+
+write.table(
+  submission,
+  file = "submission_7f_umbral_022.csv",
+  sep = ",",
+  row.names = FALSE,
+  col.names = TRUE,
+  quote = FALSE
+)
 
