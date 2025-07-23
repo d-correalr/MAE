@@ -1189,3 +1189,313 @@ write.table(
   quote = FALSE
 )
 
+
+# ========================
+# Modelo 7f - Ajustado
+# ========================
+
+# ---- Limpieza y transformación ----
+train$Balance.Limpio <- ifelse(is.na(train$Balance..euros.) | train$Balance..euros. < -1, 0, train$Balance..euros.)
+test$Balance.Limpio  <- ifelse(is.na(test$Balance..euros.)  | test$Balance..euros. < -1, 0, test$Balance..euros.)
+
+train$LogBalance <- log1p(train$Balance.Limpio)
+test$LogBalance  <- log1p(test$Balance.Limpio)
+
+train$EdadGrupo <- cut(train$Age, breaks = c(0, 30, 40, 50, 60, 100), labels = FALSE, include.lowest = TRUE)
+test$EdadGrupo  <- cut(test$Age, breaks = c(0, 30, 40, 50, 60, 100), labels = FALSE, include.lowest = TRUE)
+
+train$ContactadoAntes <- ifelse(train$Pdays == -1, 0, 1)
+test$ContactadoAntes  <- ifelse(test$Pdays == -1, 0, 1)
+
+train$DuracionCampaña <- train$Last.Contact.Duration / (train$Campaign + 1)
+test$DuracionCampaña  <- test$Last.Contact.Duration / (test$Campaign + 1)
+
+train$DuracionBin <- cut(train$Last.Contact.Duration, breaks = c(0, 100, 300, 600, 1000, Inf), labels = FALSE)
+test$DuracionBin  <- cut(test$Last.Contact.Duration, breaks = c(0, 100, 300, 600, 1000, Inf), labels = FALSE)
+
+rare_jobs <- names(which(table(train$Job) < 300))
+train$JobSimplified <- ifelse(train$Job %in% rare_jobs, "other", train$Job)
+test$JobSimplified  <- ifelse(test$Job %in% rare_jobs, "other", test$Job)
+train$JobSimplified <- factor(train$JobSimplified)
+test$JobSimplified  <- factor(test$JobSimplified)
+
+# ---- Arreglar niveles en factores ----
+match_levels <- function(varname) {
+  lvls <- union(levels(train[[varname]]), levels(test[[varname]]))
+  train[[varname]] <- factor(train[[varname]], levels = lvls)
+  test[[varname]]  <- factor(test[[varname]],  levels = lvls)
+}
+
+factor_vars <- c("JobSimplified", "Education", "Marital.Status", "Credit",
+                 "Housing.Loan", "Personal.Loan", "Contact", "Poutcome",
+                 "Last.Contact.Month", "Last.Contact.Day")
+
+for (v in factor_vars) {
+  match_levels(v)
+}
+
+# ---- Eliminar filas con NA restantes ----
+train <- na.omit(train)
+
+# ---- Entrenar modelo ----
+modelo_7f <- glm(
+  Subscription ~ Age + Education + JobSimplified + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    LogBalance + EdadGrupo + ContactadoAntes + DuracionCampaña + DuracionBin +
+    Campaign:Previous + DuracionCampaña:Campaign + ContactadoAntes:Pdays,
+  data = train,
+  family = "binomial"
+)
+
+
+
+
+# ---- Predicción y threshold ----
+pred7f <- predict(modelo_7f, newdata = test, type = "response")
+pred7f_bin <- ifelse(pred7f > 0.30, 1, 0)
+
+# ---- Exportar submission ----
+envio7f <- data.frame(Id = test$Id, Predicted = pred7f_bin)
+write.table(envio7f,
+            file = "submission_model_7f.csv",
+            sep = ",", row.names = FALSE,
+            col.names = TRUE, quote = FALSE)
+
+
+# Modelo 7g: Mejora de 7e con variables derivadas confiables
+modelo_7g <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    Balance..euros. + Campaign:Previous + Pdays:Previous +
+    LogBalance + EdadGrupo + ContactadoAntes,
+  data = train,
+  family = "binomial"
+)
+
+# Predicción en test
+probs_7g <- predict(modelo_7g, newdata = test, type = "response")
+
+# Aplicar umbral 0.25
+preds_7g <- ifelse(probs_7g > 0.25, 1, 0)
+
+# Submission
+submission_7g <- data.frame(Id = test$ID, Predicted = preds_7g)
+write.table(submission_7g, "submission_7g_umbral_025.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+# Modelo 7h: 7g + nuevas interacciones
+modelo_7h <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    Balance..euros. + Campaign:Previous + Pdays:Previous +
+    LogBalance + EdadGrupo + ContactadoAntes +
+    Last.Contact.Duration:ContactadoAntes +
+    Campaign:LogBalance +
+    EdadGrupo:Education,
+  data = train,
+  family = "binomial"
+)
+
+# Predicción
+probs_7h <- predict(modelo_7h, newdata = test, type = "response")
+
+# Umbral 0.25
+preds_7h <- ifelse(probs_7h > 0.25, 1, 0)
+
+# Submission
+submission_7h <- data.frame(Id = test$ID, Predicted = preds_7h)
+write.table(submission_7h, "submission_7h_umbral_025.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+library(caret)
+
+modelo_7h <- glm(Subscription ~ Age + Education + Job + Marital.Status +
+                   Housing.Loan + Personal.Loan + Contact +
+                   Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+                   Campaign + Pdays + Previous + Poutcome +
+                   Balance..euros. + Campaign:Previous + Pdays:Poutcome +
+                   LogBalance + EdadGrupo + ContactadoAntes +
+                   Last.Contact.Duration:ContactadoAntes +
+                   Campaign:LogBalance + EdadGrupo:Education,
+                 data = train, family = binomial)
+
+# Predicción de probabilidades
+probs <- predict(modelo_7h, newdata = train, type = "response")
+
+# Aplicar umbral 0.25
+pred_025 <- ifelse(probs > 0.25, 1, 0)
+
+# Métricas de validación
+conf <- table(Predicted = pred_025, Actual = train$Subscription)
+accuracy <- sum(diag(conf)) / sum(conf)
+sensitivity <- conf["1", "1"] / sum(conf[,"1"])
+specificity <- conf["0", "0"] / sum(conf[,"0"])
+f1 <- 2 * ((sensitivity * specificity) / (sensitivity + specificity))
+
+# Predecir test
+probs_test <- predict(modelo_7h, newdata = test, type = "response")
+pred_test <- ifelse(probs_test > 0.25, 1, 0)
+
+# Crear archivo de submission
+submission <- data.frame(Id = test$ID, Predicted = pred_test)
+write.table(submission, file = "submission_7h_025.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+# Crear variable binaria de duración alta
+train$DuracionAlta <- ifelse(train$Last.Contact.Duration > 300, 1, 0)
+test$DuracionAlta  <- ifelse(test$Last.Contact.Duration > 300, 1, 0)
+
+# Convertir a factor si se requiere
+train$DuracionAlta <- factor(train$DuracionAlta)
+test$DuracionAlta  <- factor(test$DuracionAlta)
+
+# Modelo 7i: extiende 7h
+modelo_7i <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    Balance..euros. + Campaign:Previous + Pdays:Previous +
+    LogBalance + EdadGrupo + ContactadoAntes +
+    Last.Contact.Duration:ContactadoAntes +
+    Campaign:LogBalance +
+    EdadGrupo:Education +
+    DuracionAlta + Job:ContactadoAntes,
+  data = train,
+  family = "binomial"
+)
+
+# Predicción
+probs_7i <- predict(modelo_7i, newdata = test, type = "response")
+preds_7i <- ifelse(probs_7i > 0.25, 1, 0)
+
+# Submission
+submission_7i <- data.frame(Id = test$ID, Predicted = preds_7i)
+write.table(submission_7i, "submission_7i_umbral_025.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+# --- Preparar fórmula refinada (modelo 7j) ---
+formula_7j <- Subscription ~ Age + Education + Job + Marital.Status +
+  Housing.Loan + Personal.Loan + Contact + Last.Contact.Month + Last.Contact.Day +
+  Last.Contact.Duration + Campaign + Pdays + Previous + Poutcome + Balance..euros. +
+  LogBalance + EdadGrupo + ContactadoAntes + DuracionCampaña + DuracionBin +
+  Campaign:Previous + DuracionCampaña:Campaign + ContactadoAntes:Pdays +
+  LogBalance:EdadGrupo + ContactadoAntes:DuracionBin + Job:Education
+
+# --- Entrenar modelo ---
+modelo_7j <- glm(formula_7j, data = train, family = "binomial")
+summary(modelo_7j)
+
+# --- Predicción en test ---
+test$prob_7j <- predict(modelo_7j, newdata = test, type = "response")
+test$Predicted_7j <- ifelse(test$prob_7j >= 0.25, 1, 0)
+
+# --- Submission ---
+submission_7j <- data.frame(Id = test$ID, Predicted = test$Predicted_7j)
+write.table(submission_7j, "submission_7j.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+# Instalar si no está instalado
+if (!require(car)) install.packages("car")
+library(car)
+
+# Revisar multicolinealidad
+modelo_7i_base <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact + Last.Contact.Month + Last.Contact.Day +
+    Last.Contact.Duration + Campaign + Pdays + Previous + Poutcome + Balance..euros. +
+    Campaign:Previous + Age:Balance..euros. + Last.Contact.Duration:Campaign +
+    Pdays:Previous + Education:Contact,
+  data = train,
+  family = "binomial"
+)
+
+# Verificar VIF
+vif(modelo_7i_base)
+
+####modelo más refinado
+
+modelo_7i_vif <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    # Excluimos: Balance..euros., Education:Contact, Contact:Education,
+    # Age:Balance, Campaign:Previous, Last.Contact.Duration:Campaign, Pdays:Previous
+    LogBalance, ContactadoAntes + DuracionCampaña + DuracionBin + EdadGrupo,
+  data = train,
+  family = "binomial"
+)
+
+# Predicción y submission
+test$Predicted <- predict(modelo_7i_vif, newdata = test, type = "response")
+submission <- data.frame(Id = test$ID, Predicted = ifelse(test$Predicted > 0.25, 1, 0))
+write.table(submission, "submission_7i_vif.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+##
+modelo_7i_final <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    Balance..euros. + Campaign:Previous + Age:Balance..euros. +
+    Last.Contact.Duration:Campaign + Pdays:Previous +
+    LogBalance + EdadGrupo + ContactadoAntes + DuracionCampaña + DuracionBin,
+  data = train,
+  family = "binomial"
+)
+
+# Predicción y generación de archivo de submission
+test$Predicted <- predict(modelo_7i_final, newdata = test, type = "response")
+submission <- data.frame(Id = test$ID, Predicted = ifelse(test$Predicted > 0.25, 1, 0))
+write.table(submission, "submission_7i_final.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+# Binning para Campaign
+train$CampaignBin <- cut(train$Campaign, breaks = c(0,1,2,4,7,Inf), labels = FALSE)
+test$CampaignBin  <- cut(test$Campaign,  breaks = c(0,1,2,4,7,Inf), labels = FALSE)
+
+# Binning para Previous
+train$PreviousBin <- cut(train$Previous, breaks = c(0,1,2,4,10,Inf), labels = FALSE)
+test$PreviousBin  <- cut(test$Previous,  breaks = c(0,1,2,4,10,Inf), labels = FALSE)
+
+# Edad centrada
+train$EdadCentro <- scale(train$Age, center = TRUE, scale = FALSE)
+test$EdadCentro  <- scale(test$Age, center = attr(train$EdadCentro, "scaled:center"), scale = FALSE)
+
+# Frecuencia contacto anterior
+train$FrecuenciaContacto <- train$Previous / (train$Pdays + 1)
+test$FrecuenciaContacto  <- test$Previous / (test$Pdays + 1)
+
+modelo_7j <- glm(
+  Subscription ~ Age + Education + Job + Marital.Status +
+    Housing.Loan + Personal.Loan + Contact +
+    Last.Contact.Month + Last.Contact.Day + Last.Contact.Duration +
+    Campaign + Pdays + Previous + Poutcome +
+    Balance..euros. + Campaign:Previous +
+    Age:Balance..euros. + Pdays:Previous +
+    Last.Contact.Duration:Campaign +
+    Education:Contact +
+    # Nuevas interacciones
+    Education:Marital.Status +
+    Contact:Poutcome +
+    EdadGrupo:Campaign +
+    # Nuevas variables
+    LogBalance + EdadGrupo + ContactadoAntes +
+    DuracionCampaña + DuracionBin +
+    CampaignBin + PreviousBin + EdadCentro + FrecuenciaContacto,
+  data = train,
+  family = "binomial"
+)
+
+# Predicción
+pred_7j <- predict(modelo_7j, newdata = test, type = "response")
+submit_7j <- data.frame(Id = test$ID, Predicted = as.numeric(pred_7j > 0.25))
+
+# Exportar
+write.table(submit_7j, file = "7j_umbral_025.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+
