@@ -1434,7 +1434,7 @@ test$Predicted <- predict(modelo_7i_vif, newdata = test, type = "response")
 submission <- data.frame(Id = test$ID, Predicted = ifelse(test$Predicted > 0.25, 1, 0))
 write.table(submission, "submission_7i_vif.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
 
-##
+############################################################################ es este modelo el final
 modelo_7i_final <- glm(
   Subscription ~ Age + Education + Job + Marital.Status +
     Housing.Loan + Personal.Loan + Contact +
@@ -1451,6 +1451,65 @@ modelo_7i_final <- glm(
 test$Predicted <- predict(modelo_7i_final, newdata = test, type = "response")
 submission <- data.frame(Id = test$ID, Predicted = ifelse(test$Predicted > 0.25, 1, 0))
 write.table(submission, "submission_7i_final.csv", sep = ",", row.names = FALSE, col.names = TRUE, quote = FALSE)
+
+
+# 1. Predicción de probabilidades en el conjunto de prueba
+probabilidades <- predict(modelo_7i_final, newdata = test, type = "response")
+
+# 2. Convertir a clases usando el umbral óptimo (0.25)
+umbral <- 0.25
+pred_clase <- ifelse(probabilidades > umbral, 1, 0)
+
+# 3. Matriz de confusión
+matriz_conf <- table(Predicted = pred_clase, Actual = test$Subscription)
+print("Matriz de Confusión:")
+print(matriz_conf)
+
+# 4. Calcular métricas de desempeño
+library(caret)
+conf_metrics <- confusionMatrix(as.factor(pred_clase), as.factor(test$Subscription), positive = "1")
+print(conf_metrics)
+
+# 5. AUC y curva ROC
+library(pROC)
+roc_obj <- roc(test$Subscription, probabilidades)
+auc_valor <- auc(roc_obj)
+print(paste("AUC:", auc_valor))
+
+# 6. Graficar curva ROC
+plot(roc_obj, col = "#2c7bb6", lwd = 2, main = "Curva ROC - Modelo 7i_final")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Binning para Campaign
